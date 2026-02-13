@@ -5,6 +5,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSlug from "rehype-slug";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "@/components/markdown/code-block";
+import { ChartBlock } from "@/components/markdown/chart-block";
 import { MermaidDiagram } from "@/components/markdown/mermaid-diagram";
 import { TableOfContents } from "@/components/markdown/table-of-contents";
 import { extractTocItems } from "@/lib/markdown-utils";
@@ -194,6 +195,11 @@ export function MarkdownRenderer({
               // Mermaid diagrams get rendered as interactive SVG
               if (match?.[1] === "mermaid") {
                 return <MermaidDiagram chart={content} />;
+              }
+
+              // Chart blocks get rendered as Recharts visualizations
+              if (match?.[1] === "chart") {
+                return <ChartBlock>{content}</ChartBlock>;
               }
 
               // Multi-line code blocks get full CodeBlock treatment
