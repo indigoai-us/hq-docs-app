@@ -4,6 +4,7 @@ import { ContentArea } from "@/components/layout/content-area";
 import { WelcomeScreen } from "@/components/onboarding/welcome-screen";
 import { SettingsModal } from "@/components/settings/settings-modal";
 import { AboutDialog } from "@/components/about/about-dialog";
+import { CommandPalette } from "@/components/search/command-palette";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useFileTree } from "@/hooks/use-file-tree";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
@@ -42,6 +43,7 @@ function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [contentRefreshKey, setContentRefreshKey] = useState(0);
@@ -76,9 +78,13 @@ function App() {
     return groupTreeByTier(tree, enabledScopes, config.hqFolderPath);
   }, [tree, enabledScopes, config.hqFolderPath]);
 
-  // Keyboard shortcuts: Cmd+, (settings), Cmd+B (sidebar toggle), Escape (close modals)
+  // Keyboard shortcuts: Cmd+K (search), Cmd+, (settings), Cmd+B (sidebar toggle), Escape (close modals)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.metaKey && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
       if (e.metaKey && e.key === ",") {
         e.preventDefault();
         setSettingsOpen((prev) => !prev);
@@ -87,9 +93,12 @@ function App() {
         e.preventDefault();
         setSidebarVisible((prev) => !prev);
       }
-      // Escape to close settings or about
+      // Escape to close search, settings, or about
       if (e.key === "Escape") {
-        if (aboutOpen) {
+        if (searchOpen) {
+          // Let the command palette handle its own Escape logic
+          return;
+        } else if (aboutOpen) {
           e.preventDefault();
           setAboutOpen(false);
         } else if (settingsOpen) {
@@ -101,7 +110,7 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [settingsOpen, aboutOpen]);
+  }, [settingsOpen, aboutOpen, searchOpen]);
 
   // Listen for Tauri menu events (About, Preferences)
   useEffect(() => {
@@ -128,6 +137,14 @@ function App() {
     return () => {
       unlisten?.();
     };
+  }, []);
+
+  const handleOpenSearch = useCallback(() => {
+    setSearchOpen(true);
+  }, []);
+
+  const handleCloseSearch = useCallback(() => {
+    setSearchOpen(false);
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -241,6 +258,7 @@ function App() {
           <Sidebar
             hqFolderPath={config.hqFolderPath}
             onOpenSettings={handleOpenSettings}
+            onOpenSearch={handleOpenSearch}
             onSelectFile={handleSelectFile}
             selectedFile={selectedFile}
             tierGroups={tierGroups}
@@ -278,6 +296,12 @@ function App() {
         onRescan={rescan}
       />
       <AboutDialog isOpen={aboutOpen} onClose={handleCloseAbout} />
+      <CommandPalette
+        isOpen={searchOpen}
+        onClose={handleCloseSearch}
+        onSelectFile={handleSelectFile}
+        hqFolderPath={config.hqFolderPath}
+      />
     </>
   );
 }

@@ -23,6 +23,8 @@ interface SidebarProps {
   hqFolderPath: string | null;
   /** Open settings modal */
   onOpenSettings: () => void;
+  /** Open search command palette (Cmd+K) */
+  onOpenSearch?: () => void;
   /** Callback when a file is selected for viewing */
   onSelectFile?: (filePath: string) => void;
   /** Currently selected file path */
@@ -60,6 +62,7 @@ export function Sidebar({
   className,
   hqFolderPath,
   onOpenSettings,
+  onOpenSearch,
   onSelectFile,
   selectedFile,
   tierGroups,
@@ -94,6 +97,7 @@ export function Sidebar({
             </span>
           </div>
           <button
+            onClick={onOpenSearch}
             className={cn(
               "flex h-7 w-7 items-center justify-center rounded-md",
               "text-white/40 transition-colors duration-150",

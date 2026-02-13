@@ -1,8 +1,9 @@
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
@@ -353,6 +354,160 @@ fn stop_watching(state: State<'_, Mutex<WatcherState>>) -> Result<(), String> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// qmd search integration
+// ---------------------------------------------------------------------------
+
+/// A single search result returned by qmd.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QmdSearchResult {
+    /// Document ID (e.g. "#abc123")
+    #[serde(default)]
+    pub doc_id: String,
+    /// Relevance score 0.0–1.0
+    #[serde(default)]
+    pub score: f64,
+    /// Document title
+    #[serde(default)]
+    pub title: String,
+    /// File path (may have qmd prefix)
+    #[serde(alias = "file", default)]
+    pub file_path: String,
+    /// Matched text snippet
+    #[serde(default)]
+    pub snippet: String,
+}
+
+/// Result of the qmd search command.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QmdSearchResponse {
+    pub results: Vec<QmdSearchResult>,
+    pub total: usize,
+    pub error: Option<String>,
+}
+
+/// Check if qmd is installed and available in PATH.
+#[tauri::command]
+fn check_qmd_available() -> Result<bool, String> {
+    match Command::new("qmd").arg("--version").output() {
+        Ok(output) => Ok(output.status.success()),
+        Err(_) => Ok(false),
+    }
+}
+
+/// Execute a qmd search and return parsed JSON results.
+///
+/// `query`: The search query string.
+/// `mode`: "keyword" | "semantic" | "hybrid" — maps to qmd search/vsearch/query.
+/// `collection`: Optional collection to scope the search (e.g. "hq", "vyg").
+/// `limit`: Max number of results to return.
+#[tauri::command]
+fn qmd_search(
+    query: String,
+    mode: String,
+    collection: Option<String>,
+    limit: Option<u32>,
+) -> Result<QmdSearchResponse, String> {
+    if query.trim().is_empty() {
+        return Ok(QmdSearchResponse {
+            results: Vec::new(),
+            total: 0,
+            error: None,
+        });
+    }
+
+    // Map mode to qmd subcommand
+    let subcmd = match mode.as_str() {
+        "keyword" => "search",
+        "semantic" => "vsearch",
+        "hybrid" | _ => "query",
+    };
+
+    let n = limit.unwrap_or(10);
+
+    let mut cmd = Command::new("qmd");
+    cmd.arg(subcmd)
+        .arg(&query)
+        .arg("--json")
+        .arg("-n")
+        .arg(n.to_string());
+
+    // Add collection scoping if provided
+    if let Some(ref coll) = collection {
+        if !coll.is_empty() && coll != "all" {
+            cmd.arg("-c").arg(coll);
+        }
+    }
+
+    let output = cmd.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "qmd not found in PATH. Install qmd for search functionality.".to_string()
+        } else {
+            format!("Failed to execute qmd: {}", e)
+        }
+    })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Ok(QmdSearchResponse {
+            results: Vec::new(),
+            total: 0,
+            error: Some(format!("qmd error: {}", stderr.trim())),
+        });
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Parse the JSON output — qmd returns an array of result objects
+    let results: Vec<QmdSearchResult> = serde_json::from_str(&stdout).unwrap_or_else(|_| {
+        // Try parsing as newline-delimited JSON
+        stdout
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .filter_map(|line| serde_json::from_str::<QmdSearchResult>(line).ok())
+            .collect()
+    });
+
+    let total = results.len();
+
+    Ok(QmdSearchResponse {
+        results,
+        total,
+        error: None,
+    })
+}
+
+/// List available qmd collections.
+#[tauri::command]
+fn list_qmd_collections() -> Result<Vec<String>, String> {
+    let output = Command::new("qmd")
+        .arg("collection")
+        .arg("list")
+        .output()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "qmd not found in PATH".to_string()
+            } else {
+                format!("Failed to execute qmd: {}", e)
+            }
+        })?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let collections: Vec<String> = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    Ok(collections)
+}
+
 /// Expand a scope pattern like "companies/*/knowledge" into concrete paths.
 /// Supports a single `*` wildcard that matches any subdirectory.
 fn expand_scope(hq: &Path, scope: &str) -> Vec<PathBuf> {
@@ -414,7 +569,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .manage(Mutex::new(WatcherState { _debouncer: None }))
-        .invoke_handler(tauri::generate_handler![scan_hq_directory, start_watching, stop_watching])
+        .invoke_handler(tauri::generate_handler![scan_hq_directory, start_watching, stop_watching, check_qmd_available, qmd_search, list_qmd_collections])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
 
