@@ -71,6 +71,14 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code signing
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # macOS notarization
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: v__VERSION__
           releaseName: 'Indigo Docs v__VERSION__'
@@ -87,6 +95,16 @@ jobs:
             | macOS (Intel) | `.dmg` |
             | Windows | `.msi` |
             | Linux | `.AppImage` / `.deb` |
+
+            ### macOS: "App is damaged" error
+
+            If macOS shows "Indigo Docs is damaged and can't be opened", run this in Terminal:
+
+            ```
+            xattr -cr /Applications/Indigo\ Docs.app
+            ```
+
+            Or go to **System Settings → Privacy & Security** and click **Open Anyway**.
 
             ### Changelog
 
