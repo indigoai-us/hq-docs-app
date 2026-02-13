@@ -1,0 +1,19 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="14" fill="url(#indigo-gradient)"/>
+  <path d="M16 18C16 16.8954 16.8954 16 18 16H29C30.1046 16 31 16.8954 31 18V46C31 47.1046 30.1046 48 29 48H18C16.8954 48 16 47.1046 16 46V18Z" fill="white" fill-opacity="0.95"/>
+  <path d="M33 18C33 16.8954 33.8954 16 35 16H46C47.1046 16 48 16.8954 48 18V46C48 47.1046 47.1046 48 46 48H35C33.8954 48 33 47.1046 33 46V18Z" fill="white" fill-opacity="0.85"/>
+  <rect x="30" y="14" width="4" height="36" rx="2" fill="white" fill-opacity="0.25"/>
+  <rect x="19" y="22" width="9" height="1.5" rx="0.75" fill="#4F46E5" fill-opacity="0.55"/>
+  <rect x="19" y="26" width="7" height="1.5" rx="0.75" fill="#4F46E5" fill-opacity="0.4"/>
+  <rect x="19" y="30" width="8" height="1.5" rx="0.75" fill="#4F46E5" fill-opacity="0.3"/>
+  <rect x="19" y="34" width="6" height="1.5" rx="0.75" fill="#4F46E5" fill-opacity="0.22"/>
+  <rect x="36" y="22" width="9" height="1.5" rx="0.75" fill="#4F46E5" fill-opacity="0.45"/>
+  <rect x="36" y="26" width="7" height="1.5" rx="0.75" fill="#4F46E5" fill-opacity="0.35"/>
+  <rect x="36" y="30" width="8" height="1.5" rx="0.75" fill="#4F46E5" fill-opacity="0.25"/>
+  <defs>
+    <linearGradient id="indigo-gradient" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#3730A3"/>
+    </linearGradient>
+  </defs>
+</svg>
