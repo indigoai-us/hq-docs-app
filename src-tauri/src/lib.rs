@@ -508,6 +508,155 @@ fn list_qmd_collections() -> Result<Vec<String>, String> {
     Ok(collections)
 }
 
+// ---------------------------------------------------------------------------
+// File metadata for the metadata bar (US-013)
+// ---------------------------------------------------------------------------
+
+/// Metadata about a single file, returned by `get_file_metadata`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileMetadata {
+    /// Word count (whitespace-delimited tokens in the file)
+    pub word_count: u32,
+    /// Estimated reading time in minutes (word_count / 200, minimum 1)
+    pub reading_time_minutes: u32,
+    /// File size in bytes
+    pub file_size: u64,
+    /// Last modified timestamp (seconds since epoch)
+    pub modified: Option<u64>,
+    /// Absolute file path
+    pub file_path: String,
+    /// If this path is a symlink, the resolved real path; otherwise null
+    pub symlink_target: Option<String>,
+    /// Repository name extracted from symlink target (e.g. "knowledge-ralph")
+    pub source_repo_name: Option<String>,
+}
+
+/// Get metadata for a file (word count, reading time, size, modified, symlink info).
+#[tauri::command]
+fn get_file_metadata(file_path: String) -> Result<FileMetadata, String> {
+    let path = Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let word_count = content.split_whitespace().count() as u32;
+    let reading_time_minutes = (word_count / 200).max(1);
+
+    let metadata = fs::metadata(path)
+        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let file_size = metadata.len();
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+
+    // Check if the file or any ancestor directory is a symlink
+    let symlink_metadata = fs::symlink_metadata(path).ok();
+    let is_direct_symlink = symlink_metadata
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false);
+
+    let (symlink_target, source_repo_name) = if is_direct_symlink {
+        // The file itself is a symlink
+        let target = fs::read_link(path)
+            .ok()
+            .and_then(|t| fs::canonicalize(path).ok().or(Some(t.to_path_buf())))
+            .map(|t| t.to_string_lossy().to_string());
+        let repo_name = target
+            .as_ref()
+            .and_then(|t| extract_repo_name_from_path(t));
+        (target, repo_name)
+    } else {
+        // Check if the canonical path differs (ancestor is a symlink)
+        let canonical = fs::canonicalize(path).ok();
+        let canonical_str = canonical.as_ref().map(|c| c.to_string_lossy().to_string());
+        if canonical_str.as_deref() != Some(&file_path) && canonical_str.is_some() {
+            let repo_name = canonical_str
+                .as_ref()
+                .and_then(|t| extract_repo_name_from_path(t));
+            (canonical_str, repo_name)
+        } else {
+            (None, None)
+        }
+    };
+
+    Ok(FileMetadata {
+        word_count,
+        reading_time_minutes,
+        file_size,
+        modified,
+        file_path: file_path.clone(),
+        symlink_target,
+        source_repo_name,
+    })
+}
+
+/// Extract repository name from a resolved symlink path.
+/// Looks for patterns like `/repos/public/{repo-name}/` or `/repos/private/{repo-name}/`.
+fn extract_repo_name_from_path(path: &str) -> Option<String> {
+    // Match repos/{public|private}/{name}/ in the resolved path
+    for part in path.split("/repos/").skip(1) {
+        let segments: Vec<&str> = part.split('/').collect();
+        if segments.len() >= 2 {
+            // segments[0] = "public" or "private", segments[1] = repo name
+            let repo_name = segments[1].to_string();
+            if !repo_name.is_empty() {
+                return Some(repo_name);
+            }
+        }
+    }
+    None
+}
+
+/// Get the last git commit date for a file.
+///
+/// Shells out to `git log -1 --format=%cI -- <file>` to get the ISO8601 commit date.
+/// Returns None (as null) if git is not available or the file is not tracked.
+#[tauri::command]
+fn get_git_commit_date(file_path: String) -> Result<Option<String>, String> {
+    let path = Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+
+    // Determine the working directory (parent of the file)
+    let work_dir = path.parent().unwrap_or(Path::new("/"));
+
+    let output = Command::new("git")
+        .arg("log")
+        .arg("-1")
+        .arg("--format=%cI")
+        .arg("--")
+        .arg(&file_path)
+        .current_dir(work_dir)
+        .output();
+
+    match output {
+        Ok(out) => {
+            if out.status.success() {
+                let date = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if date.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(date))
+                }
+            } else {
+                // Git command failed (not a git repo, file not tracked, etc.)
+                Ok(None)
+            }
+        }
+        Err(_) => {
+            // Git not found in PATH
+            Ok(None)
+        }
+    }
+}
+
 /// Expand a scope pattern like "companies/*/knowledge" into concrete paths.
 /// Supports a single `*` wildcard that matches any subdirectory.
 fn expand_scope(hq: &Path, scope: &str) -> Vec<PathBuf> {
@@ -569,7 +718,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .manage(Mutex::new(WatcherState { _debouncer: None }))
-        .invoke_handler(tauri::generate_handler![scan_hq_directory, start_watching, stop_watching, check_qmd_available, qmd_search, list_qmd_collections])
+        .invoke_handler(tauri::generate_handler![scan_hq_directory, start_watching, stop_watching, check_qmd_available, qmd_search, list_qmd_collections, get_file_metadata, get_git_commit_date])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
 

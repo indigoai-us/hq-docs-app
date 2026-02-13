@@ -9,6 +9,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { getCompanyDisplayName, getCompanyDotColor } from "@/lib/companies";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -185,6 +186,10 @@ export interface TierGroup {
   label: string;
   /** Tree roots belonging to this tier */
   roots: FileTreeNode[];
+  /** Company ID if this is a per-company sub-group (only for tier="company") */
+  companyId?: string;
+  /** Tailwind dot color class (overrides tier default when per-company) */
+  dotColor?: string;
 }
 
 /** Labels for each tier */
@@ -195,11 +200,24 @@ const TIER_LABELS: Record<string, string> = {
 };
 
 /**
+ * Extract the company ID from a root path that matches the
+ * `companies/{name}/knowledge` pattern. Returns null if no match.
+ */
+function extractCompanyId(rootPath: string, hqPath: string): string | null {
+  const rootRelative = rootPath.replace(hqPath + "/", "");
+  const match = rootRelative.match(/^companies\/([^/]+)\/knowledge/);
+  return match ? match[1] : null;
+}
+
+/**
  * Group tree roots by their scope tier.
  *
  * Maps each tree root back to a scope by matching its path against
  * scope patterns, then groups roots under their respective tier.
  * Only returns tiers that have at least one root.
+ *
+ * The "company" tier is split into per-company sub-groups, each with
+ * the company's distinct accent color and display name.
  */
 export function groupTreeByTier(
   roots: FileTreeNode[],
@@ -211,7 +229,8 @@ export function groupTreeByTier(
     .filter((s): s is ScanScope => s !== undefined);
 
   const tierMap: Record<string, FileTreeNode[]> = {};
-  const tierOrder: ("hq" | "company" | "tools")[] = ["hq", "company", "tools"];
+  // Per-company buckets: companyId -> roots[]
+  const companyMap: Record<string, FileTreeNode[]> = {};
 
   for (const root of roots) {
     // Match root path to scope by checking if root.path ends with the scope pattern
@@ -248,19 +267,72 @@ export function groupTreeByTier(
       }
     }
 
+    // For company tier, bucket by company ID
+    if (matchedTier === "company") {
+      const companyId = extractCompanyId(root.path, hqPath);
+      if (companyId) {
+        if (!companyMap[companyId]) {
+          companyMap[companyId] = [];
+        }
+        companyMap[companyId].push(root);
+        // Still add to tierMap so the company tier is present in the order
+        if (!tierMap["company"]) {
+          tierMap["company"] = [];
+        }
+        tierMap["company"].push(root);
+        continue;
+      }
+    }
+
     if (!tierMap[matchedTier]) {
       tierMap[matchedTier] = [];
     }
     tierMap[matchedTier].push(root);
   }
 
-  return tierOrder
-    .filter((tier) => tierMap[tier] && tierMap[tier].length > 0)
-    .map((tier) => ({
-      tier,
-      label: TIER_LABELS[tier] || tier,
-      roots: tierMap[tier],
-    }));
+  // Build the result: HQ groups, then per-company groups, then Tools
+  const result: TierGroup[] = [];
+
+  // Add HQ tier
+  if (tierMap["hq"] && tierMap["hq"].length > 0) {
+    result.push({
+      tier: "hq",
+      label: TIER_LABELS["hq"],
+      roots: tierMap["hq"],
+    });
+  }
+
+  // Add per-company sub-groups (sorted alphabetically by company name)
+  const companyIds = Object.keys(companyMap).sort();
+  for (const companyId of companyIds) {
+    result.push({
+      tier: "company",
+      label: getCompanyDisplayName(companyId),
+      roots: companyMap[companyId],
+      companyId,
+      dotColor: getCompanyDotColor(companyId),
+    });
+  }
+
+  // Add Tools tier
+  if (tierMap["tools"] && tierMap["tools"].length > 0) {
+    result.push({
+      tier: "tools",
+      label: TIER_LABELS["tools"],
+      roots: tierMap["tools"],
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Get all unique company IDs present in the tier groups.
+ */
+export function getCompanyIdsFromGroups(groups: TierGroup[]): string[] {
+  return groups
+    .filter((g) => g.tier === "company" && g.companyId)
+    .map((g) => g.companyId!);
 }
 
 /**

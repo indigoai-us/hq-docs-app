@@ -5,10 +5,12 @@ import { WelcomeScreen } from "@/components/onboarding/welcome-screen";
 import { SettingsModal } from "@/components/settings/settings-modal";
 import { AboutDialog } from "@/components/about/about-dialog";
 import { CommandPalette } from "@/components/search/command-palette";
+import { KeyboardShortcutsDialog } from "@/components/shortcuts/keyboard-shortcuts-dialog";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useFileTree } from "@/hooks/use-file-tree";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { groupTreeByTier } from "@/lib/scanner";
 
 function App() {
@@ -44,9 +46,11 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [contentRefreshKey, setContentRefreshKey] = useState(0);
+  const [companyFilter, setCompanyFilter] = useState<string | null>(null);
 
   // Track selectedFile in a ref so watcher callbacks can read it without
   // causing the watcher hook to re-subscribe on every file selection
@@ -78,39 +82,41 @@ function App() {
     return groupTreeByTier(tree, enabledScopes, config.hqFolderPath);
   }, [tree, enabledScopes, config.hqFolderPath]);
 
-  // Keyboard shortcuts: Cmd+K (search), Cmd+, (settings), Cmd+B (sidebar toggle), Escape (close modals)
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.metaKey && e.key === "k") {
-        e.preventDefault();
-        setSearchOpen((prev) => !prev);
-      }
-      if (e.metaKey && e.key === ",") {
-        e.preventDefault();
-        setSettingsOpen((prev) => !prev);
-      }
-      if (e.metaKey && e.key === "b") {
-        e.preventDefault();
-        setSidebarVisible((prev) => !prev);
-      }
-      // Escape to close search, settings, or about
-      if (e.key === "Escape") {
-        if (searchOpen) {
-          // Let the command palette handle its own Escape logic
-          return;
-        } else if (aboutOpen) {
-          e.preventDefault();
-          setAboutOpen(false);
-        } else if (settingsOpen) {
-          e.preventDefault();
-          setSettingsOpen(false);
-        }
-      }
+  // Escape handler — closes topmost overlay in priority order
+  const handleEscape = useCallback(() => {
+    // Search handles its own Escape internally (clear query first, then close)
+    if (searchOpen) return;
+    if (shortcutsOpen) {
+      setShortcutsOpen(false);
+      return;
     }
+    if (aboutOpen) {
+      setAboutOpen(false);
+      return;
+    }
+    if (settingsOpen) {
+      setSettingsOpen(false);
+      return;
+    }
+  }, [searchOpen, shortcutsOpen, aboutOpen, settingsOpen]);
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [settingsOpen, aboutOpen, searchOpen]);
+  // Centralized keyboard shortcuts via hook
+  useKeyboardShortcuts({
+    onToggleSearch: useCallback(() => setSearchOpen((prev) => !prev), []),
+    onToggleSidebar: useCallback(() => setSidebarVisible((prev) => !prev), []),
+    onToggleSettings: useCallback(() => setSettingsOpen((prev) => !prev), []),
+    onToggleShortcuts: useCallback(
+      () => setShortcutsOpen((prev) => !prev),
+      [],
+    ),
+    onEscape: handleEscape,
+    openOverlays: {
+      search: searchOpen,
+      settings: settingsOpen,
+      about: aboutOpen,
+      shortcuts: shortcutsOpen,
+    },
+  });
 
   // Listen for Tauri menu events (About, Preferences)
   useEffect(() => {
@@ -159,10 +165,22 @@ function App() {
     setAboutOpen(false);
   }, []);
 
+  const handleCloseShortcuts = useCallback(() => {
+    setShortcutsOpen(false);
+  }, []);
+
   // Handle selecting a file from sidebar
   const handleSelectFile = useCallback((filePath: string) => {
     setSelectedFile(filePath);
   }, []);
+
+  // Handle company filter toggle
+  const handleCompanyFilterChange = useCallback(
+    (companyId: string | null) => {
+      setCompanyFilter(companyId);
+    },
+    [],
+  );
 
   // Handle in-app navigation from relative .md links in rendered content
   const handleNavigate = useCallback(
@@ -246,6 +264,10 @@ function App() {
           onRescan={rescan}
         />
         <AboutDialog isOpen={aboutOpen} onClose={handleCloseAbout} />
+        <KeyboardShortcutsDialog
+          isOpen={shortcutsOpen}
+          onClose={handleCloseShortcuts}
+        />
       </>
     );
   }
@@ -272,6 +294,8 @@ function App() {
             onResizeMouseDown={handleSidebarResizeMouseDown}
             onResizeReset={resetSidebarWidth}
             watching={watching}
+            companyFilter={companyFilter}
+            onCompanyFilterChange={handleCompanyFilterChange}
           />
         )}
         <ContentArea
@@ -280,6 +304,7 @@ function App() {
           onNavigate={handleNavigate}
           onNavigateToPath={handleNavigateToPath}
           refreshKey={contentRefreshKey}
+          tree={tree}
         />
       </div>
       <SettingsModal
@@ -296,6 +321,10 @@ function App() {
         onRescan={rescan}
       />
       <AboutDialog isOpen={aboutOpen} onClose={handleCloseAbout} />
+      <KeyboardShortcutsDialog
+        isOpen={shortcutsOpen}
+        onClose={handleCloseShortcuts}
+      />
       <CommandPalette
         isOpen={searchOpen}
         onClose={handleCloseSearch}

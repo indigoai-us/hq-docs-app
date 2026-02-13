@@ -1,15 +1,10 @@
 import { useMemo } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-/** Known company names and their accent colors (auto-detected from companies/ dir) */
-const COMPANY_COLORS: Record<string, string> = {
-  liverecover: "bg-emerald-400",
-  abacus: "bg-blue-400",
-  indigo: "bg-primary",
-  personal: "bg-amber-400",
-  "golden-thread": "bg-rose-400",
-};
+import {
+  getCompanyDotColor,
+  getCompanyDisplayName,
+} from "@/lib/companies";
 
 interface BreadcrumbSegment {
   /** Display label */
@@ -88,12 +83,15 @@ export function Breadcrumb({
 
       // Determine company for this segment
       let segmentCompany: string | null = null;
+      let segmentLabel = parts[i];
       if (i === 1 && parts[0] === "companies" && detectedCompany) {
         segmentCompany = detectedCompany;
+        // Use the company display name instead of raw directory name
+        segmentLabel = getCompanyDisplayName(detectedCompany);
       }
 
       result.push({
-        label: parts[i],
+        label: segmentLabel,
         path: isLast ? null : currentPath,
         company: segmentCompany,
       });
@@ -139,7 +137,7 @@ export function Breadcrumb({
           const isLast = i === segments.length - 1;
           const isClickable = segment.path !== null && onNavigateToPath;
           const companyColor = segment.company
-            ? COMPANY_COLORS[segment.company] || "bg-white/40"
+            ? getCompanyDotColor(segment.company)
             : null;
 
           return (

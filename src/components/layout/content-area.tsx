@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import { FileText, AlertCircle, Loader2 } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { IndigoLogo } from "@/components/ui/indigo-logo";
 import { Titlebar } from "@/components/layout/titlebar";
 import { Breadcrumb } from "@/components/navigation/breadcrumb";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
+import { FileMetadataBar } from "@/components/markdown/file-metadata-bar";
+import { IndexLandingPage } from "@/components/navigation/index-landing-page";
+import { DirectoryListingPage } from "@/components/navigation/directory-listing-page";
 import { useFileContent } from "@/hooks/use-file-content";
+import { useFileMetadata } from "@/hooks/use-file-metadata";
+import { findNodeByPath, type FileTreeNode } from "@/lib/scanner";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/constants";
 
@@ -20,12 +25,18 @@ interface ContentAreaProps {
   onNavigateToPath?: (absolutePath: string) => void;
   /** Increment to force content refresh (used by file watcher) */
   refreshKey?: number;
+  /** File tree roots for directory lookup */
+  tree?: FileTreeNode[];
   className?: string;
 }
 
 /**
  * Main content area with slightly more opaque glass effect.
  * Renders the document viewer with markdown, breadcrumb, and table of contents.
+ *
+ * When the selected file is an INDEX.md, it renders a card-based landing page
+ * parsed from the INDEX.md table rows. When the INDEX.md fails to load (not found),
+ * it falls back to a directory listing page using the file tree data.
  */
 export function ContentArea({
   selectedFile = null,
@@ -33,9 +44,15 @@ export function ContentArea({
   onNavigate,
   onNavigateToPath,
   refreshKey = 0,
+  tree = [],
   className,
 }: ContentAreaProps) {
   const { content, loading, error, refresh } = useFileContent(selectedFile);
+  const {
+    metadata: fileMetadata,
+    gitCommitDate,
+    loading: metadataLoading,
+  } = useFileMetadata(selectedFile);
 
   // Re-read file content when refreshKey changes (triggered by file watcher)
   const isFirstRender = useRef(true);
@@ -47,6 +64,12 @@ export function ContentArea({
     }
     refresh();
   }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Detect if this is an INDEX.md file
+  const isIndexMd = useMemo(() => {
+    if (!selectedFile) return false;
+    return selectedFile.endsWith("/INDEX.md") || selectedFile === "INDEX.md";
+  }, [selectedFile]);
 
   // Extract the directory path for resolving relative image/link paths
   const basePath = useMemo(() => {
@@ -62,7 +85,33 @@ export function ContentArea({
     return selectedFile.split("/").pop() || null;
   }, [selectedFile]);
 
-  // (Breadcrumb logic is now handled by the Breadcrumb component)
+  // Find directory node from tree (used for directory listing fallback)
+  const directoryNode = useMemo(() => {
+    if (!basePath || tree.length === 0) return null;
+    return findNodeByPath(tree, basePath);
+  }, [basePath, tree]);
+
+  // Navigation handler for landing page cards (absolute paths)
+  const handleLandingNavigate = useCallback(
+    (absolutePath: string) => {
+      if (onNavigateToPath) {
+        onNavigateToPath(absolutePath);
+      }
+    },
+    [onNavigateToPath],
+  );
+
+  // Determine what to render:
+  // 1. INDEX.md loaded successfully → IndexLandingPage
+  // 2. INDEX.md failed to load → DirectoryListingPage (if directory node exists in tree)
+  // 3. Regular .md file → MarkdownRenderer
+  // 4. No file selected → EmptyState
+
+  const showIndexLanding = isIndexMd && content !== null && !loading && !error;
+  const showDirectoryListing =
+    isIndexMd && error && !loading && directoryNode !== null;
+  const showMarkdown =
+    !isIndexMd && content !== null && !loading && !error;
 
   return (
     <GlassPanel
@@ -94,8 +143,25 @@ export function ContentArea({
             </div>
           )}
 
-          {/* Error state */}
-          {error && !loading && (
+          {/* INDEX.md landing page */}
+          {showIndexLanding && basePath && (
+            <IndexLandingPage
+              content={content}
+              directoryPath={basePath}
+              onNavigate={handleLandingNavigate}
+            />
+          )}
+
+          {/* Directory listing fallback (INDEX.md not found) */}
+          {showDirectoryListing && directoryNode && (
+            <DirectoryListingPage
+              node={directoryNode}
+              onNavigate={handleLandingNavigate}
+            />
+          )}
+
+          {/* Error state (non-INDEX.md file errors) */}
+          {error && !loading && !showDirectoryListing && (
             <div className="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-4">
               <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
               <div>
@@ -107,8 +173,8 @@ export function ContentArea({
             </div>
           )}
 
-          {/* Markdown content */}
-          {content !== null && !loading && !error && (
+          {/* Regular markdown content */}
+          {showMarkdown && (
             <>
               {/* File title header */}
               {fileName && (
@@ -121,6 +187,14 @@ export function ContentArea({
                   </h1>
                 </div>
               )}
+
+              {/* File metadata bar: word count, reading time, modified date */}
+              <FileMetadataBar
+                metadata={fileMetadata}
+                gitCommitDate={gitCommitDate}
+                loading={metadataLoading}
+              />
+
               <MarkdownRenderer
                 content={content}
                 basePath={basePath}
