@@ -9,14 +9,12 @@ interface GlassPanelProps extends HTMLAttributes<HTMLDivElement> {
 
 const variantStyles: Record<GlassVariant, string> = {
   sidebar: [
-    "bg-black/40",
-    "backdrop-blur-2xl",
+    "bg-black/20",
     "border-r",
     "border-white/5",
   ].join(" "),
   content: [
-    "bg-black/60",
-    "backdrop-blur-xl",
+    "bg-black/30",
   ].join(" "),
   overlay: [
     "bg-black/50",
@@ -28,7 +26,6 @@ const variantStyles: Record<GlassVariant, string> = {
   ].join(" "),
   subtle: [
     "bg-white/5",
-    "backdrop-blur-md",
     "border",
     "border-white/5",
     "rounded-lg",
