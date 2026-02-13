@@ -6,6 +6,33 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
+
+/// Resolve the full path to the `qmd` binary.
+/// Tauri .app bundles don't inherit the user's shell PATH, so we check common locations.
+fn resolve_qmd_path() -> Option<PathBuf> {
+    // 1. Try bare "qmd" in case PATH is set (e.g. dev mode)
+    if let Ok(output) = Command::new("qmd").arg("--version").output() {
+        if output.status.success() {
+            return Some(PathBuf::from("qmd"));
+        }
+    }
+    // 2. Check well-known install locations
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{}/.bun/bin/qmd", home),
+        format!("{}/bin/qmd", home),
+        format!("{}/.local/bin/qmd", home),
+        "/usr/local/bin/qmd".to_string(),
+        "/opt/homebrew/bin/qmd".to_string(),
+    ];
+    for path in &candidates {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager, State};
 
@@ -388,13 +415,10 @@ pub struct QmdSearchResponse {
     pub error: Option<String>,
 }
 
-/// Check if qmd is installed and available in PATH.
+/// Check if qmd is installed and available.
 #[tauri::command]
 fn check_qmd_available() -> Result<bool, String> {
-    match Command::new("qmd").arg("--version").output() {
-        Ok(output) => Ok(output.status.success()),
-        Err(_) => Ok(false),
-    }
+    Ok(resolve_qmd_path().is_some())
 }
 
 /// Execute a qmd search and return parsed JSON results.
@@ -427,7 +451,10 @@ fn qmd_search(
 
     let n = limit.unwrap_or(10);
 
-    let mut cmd = Command::new("qmd");
+    let qmd_bin = resolve_qmd_path()
+        .ok_or_else(|| "qmd not found. Install qmd for search functionality.".to_string())?;
+
+    let mut cmd = Command::new(&qmd_bin);
     cmd.arg(subcmd)
         .arg(&query)
         .arg("--json")
@@ -442,11 +469,7 @@ fn qmd_search(
     }
 
     let output = cmd.output().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            "qmd not found in PATH. Install qmd for search functionality.".to_string()
-        } else {
-            format!("Failed to execute qmd: {}", e)
-        }
+        format!("Failed to execute qmd: {}", e)
     })?;
 
     if !output.status.success() {
@@ -482,16 +505,15 @@ fn qmd_search(
 /// List available qmd collections.
 #[tauri::command]
 fn list_qmd_collections() -> Result<Vec<String>, String> {
-    let output = Command::new("qmd")
+    let qmd_bin = resolve_qmd_path()
+        .ok_or_else(|| "qmd not found in PATH".to_string())?;
+
+    let output = Command::new(&qmd_bin)
         .arg("collection")
         .arg("list")
         .output()
         .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                "qmd not found in PATH".to_string()
-            } else {
-                format!("Failed to execute qmd: {}", e)
-            }
+            format!("Failed to execute qmd: {}", e)
         })?;
 
     if !output.status.success() {
