@@ -52,7 +52,7 @@ export function WelcomeScreen({
               </h1>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-white/50">
                 Turn any HQ folder into a polished, browsable documentation
-                site with macOS-native glass UI.
+                site with native glass UI.
               </p>
             </div>
           </div>

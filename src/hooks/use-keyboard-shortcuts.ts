@@ -7,13 +7,14 @@
  */
 
 import { useEffect, useCallback } from "react";
+import { modifierKeyLabel } from "@/lib/platform";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface ShortcutDef {
-  /** Display keys (e.g. ["Cmd", "K"]) */
+  /** Display keys (e.g. ["Cmd", "K"] on macOS or ["Ctrl", "K"] on Windows) */
   keys: string[];
   /** Human-readable label */
   label: string;
@@ -25,12 +26,15 @@ export interface ShortcutDef {
 // Shortcut definitions (shared with help overlay)
 // ---------------------------------------------------------------------------
 
+/** Platform-aware modifier key: "Cmd" on macOS, "Ctrl" on Windows/Linux */
+const MOD = modifierKeyLabel();
+
 export const SHORTCUT_DEFINITIONS: ShortcutDef[] = [
   // General
-  { keys: ["Cmd", "K"], label: "Open search", category: "general" },
-  { keys: ["Cmd", "B"], label: "Toggle sidebar", category: "general" },
-  { keys: ["Cmd", ","], label: "Open settings", category: "general" },
-  { keys: ["Cmd", "/"], label: "Show keyboard shortcuts", category: "general" },
+  { keys: [MOD, "K"], label: "Open search", category: "general" },
+  { keys: [MOD, "B"], label: "Toggle sidebar", category: "general" },
+  { keys: [MOD, ","], label: "Open settings", category: "general" },
+  { keys: [MOD, "/"], label: "Show keyboard shortcuts", category: "general" },
   { keys: ["Esc"], label: "Close modal / clear search", category: "general" },
 
   // Navigation
@@ -40,8 +44,8 @@ export const SHORTCUT_DEFINITIONS: ShortcutDef[] = [
   { keys: ["\u2192"], label: "Expand directory", category: "navigation" },
 
   // Content
-  { keys: ["Cmd", "\u2191"], label: "Scroll to top", category: "content" },
-  { keys: ["Cmd", "\u2193"], label: "Scroll to bottom", category: "content" },
+  { keys: [MOD, "\u2191"], label: "Scroll to top", category: "content" },
+  { keys: [MOD, "\u2193"], label: "Scroll to bottom", category: "content" },
 ];
 
 // ---------------------------------------------------------------------------
