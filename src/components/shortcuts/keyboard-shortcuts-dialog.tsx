@@ -149,7 +149,7 @@ function ShortcutRow({ shortcut }: ShortcutRowProps) {
                 "px-1.5 py-0.5 text-[11px] font-medium text-white/50",
               )}
             >
-              {key === "Cmd" ? "\u2318" : key}
+              {key === "Cmd" ? "\u2318" : key === "Ctrl" ? "Ctrl" : key}
             </kbd>
           </span>
         ))}

@@ -15,6 +15,7 @@ import { IndigoLogo } from "@/components/ui/indigo-logo";
 import { Titlebar } from "@/components/layout/titlebar";
 import { cn, truncatePath } from "@/lib/utils";
 import { APP_NAME } from "@/lib/constants";
+import { modifierKeyLabel } from "@/lib/platform";
 import type { FileTreeNode, TierGroup } from "@/lib/scanner";
 import { getCompanyIdsFromGroups } from "@/lib/scanner";
 
@@ -24,7 +25,7 @@ interface SidebarProps {
   hqFolderPath: string | null;
   /** Open settings modal */
   onOpenSettings: () => void;
-  /** Open search command palette (Cmd+K) */
+  /** Open search command palette (Cmd/Ctrl+K) */
   onOpenSearch?: () => void;
   /** Callback when a file is selected for viewing */
   onSelectFile?: (filePath: string) => void;
@@ -59,7 +60,7 @@ interface SidebarProps {
 }
 
 /**
- * Frosted glass sidebar with macOS-native feel.
+ * Frosted glass sidebar with native platform feel.
  * Renders the file tree navigation grouped by tier, search trigger, and settings.
  * Features resizable width via drag handle and tier-based grouping.
  */
@@ -122,7 +123,7 @@ export function Sidebar({
               "hover:bg-white/10 hover:text-white/70",
               "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary",
             )}
-            title="Search (Cmd+K)"
+            title={`Search (${modifierKeyLabel()}+K)`}
           >
             <Search className="h-3.5 w-3.5" />
           </button>
@@ -238,7 +239,7 @@ export function Sidebar({
                 "hover:bg-white/10 hover:text-white/50",
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary",
               )}
-              title="Settings (Cmd+,)"
+              title={`Settings (${modifierKeyLabel()}+,)`}
             >
               <Settings className="h-3.5 w-3.5" />
             </button>

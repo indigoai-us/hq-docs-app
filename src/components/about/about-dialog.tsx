@@ -13,7 +13,7 @@ interface AboutDialogProps {
 
 /**
  * About dialog showing app branding, version, credits, and GitHub link.
- * Glass-styled modal matching the app's macOS-native aesthetic.
+ * Glass-styled modal matching the app's native aesthetic.
  */
 export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
   if (!isOpen) return null;
@@ -76,7 +76,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
             {/* Description */}
             <p className="mt-3 max-w-[240px] text-center text-xs leading-relaxed text-white/50">
               Turn any HQ folder into a polished, browsable documentation site
-              with macOS-native glass UI.
+              with native glass UI.
             </p>
 
             {/* GitHub link */}

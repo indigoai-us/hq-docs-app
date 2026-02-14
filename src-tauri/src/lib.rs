@@ -9,6 +9,10 @@ use std::time::{Duration, SystemTime};
 
 /// Resolve the full path to the `qmd` binary.
 /// Tauri .app bundles don't inherit the user's shell PATH, so we check common locations.
+///
+/// Platform-specific: on Windows, searches USERPROFILE-based paths and common Windows
+/// install locations (Scoop, Chocolatey, npm global, AppData). On macOS/Linux, searches
+/// HOME-based paths and standard Unix locations.
 fn resolve_qmd_path() -> Option<PathBuf> {
     // 1. Try bare "qmd" in case PATH is set (e.g. dev mode)
     if let Ok(output) = Command::new("qmd").arg("--version").output() {
@@ -16,7 +20,80 @@ fn resolve_qmd_path() -> Option<PathBuf> {
             return Some(PathBuf::from("qmd"));
         }
     }
-    // 2. Check well-known install locations
+
+    // 2. Check well-known install locations (platform-specific)
+    #[cfg(target_os = "windows")]
+    {
+        resolve_qmd_path_windows()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        resolve_qmd_path_unix()
+    }
+}
+
+/// Windows-specific qmd path resolution.
+/// Uses USERPROFILE env var and searches common Windows install locations.
+#[cfg(target_os = "windows")]
+fn resolve_qmd_path_windows() -> Option<PathBuf> {
+    let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
+    let program_files = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".to_string());
+    let program_files_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| r"C:\Program Files (x86)".to_string());
+    let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let app_data = std::env::var("APPDATA").unwrap_or_default();
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if !user_profile.is_empty() {
+        // Bun global installs
+        candidates.push(PathBuf::from(format!(r"{}\.bun\bin\qmd.exe", user_profile)));
+        // Scoop shims
+        candidates.push(PathBuf::from(format!(r"{}\scoop\shims\qmd.exe", user_profile)));
+        candidates.push(PathBuf::from(format!(r"{}\scoop\shims\qmd.cmd", user_profile)));
+        // Cargo/Rust installs
+        candidates.push(PathBuf::from(format!(r"{}\.cargo\bin\qmd.exe", user_profile)));
+    }
+
+    if !local_app_data.is_empty() {
+        // AppData\Local\Programs (common user-level install location)
+        candidates.push(PathBuf::from(format!(r"{}\Programs\qmd\qmd.exe", local_app_data)));
+        candidates.push(PathBuf::from(format!(r"{}\Programs\qmd.exe", local_app_data)));
+    }
+
+    if !app_data.is_empty() {
+        // npm global installs (via AppData\Roaming\npm)
+        candidates.push(PathBuf::from(format!(r"{}\npm\qmd.cmd", app_data)));
+        candidates.push(PathBuf::from(format!(r"{}\npm\qmd.exe", app_data)));
+    }
+
+    // Chocolatey bin
+    candidates.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin\qmd.exe"));
+
+    // Program Files locations (system-level installs)
+    if !program_files.is_empty() {
+        candidates.push(PathBuf::from(format!(r"{}\qmd\qmd.exe", program_files)));
+        candidates.push(PathBuf::from(format!(r"{}\nodejs\qmd.cmd", program_files)));
+        candidates.push(PathBuf::from(format!(r"{}\nodejs\qmd.exe", program_files)));
+    }
+    if !program_files_x86.is_empty() {
+        candidates.push(PathBuf::from(format!(r"{}\qmd\qmd.exe", program_files_x86)));
+        candidates.push(PathBuf::from(format!(r"{}\nodejs\qmd.cmd", program_files_x86)));
+        candidates.push(PathBuf::from(format!(r"{}\nodejs\qmd.exe", program_files_x86)));
+    }
+
+    for p in &candidates {
+        if p.exists() {
+            return Some(p.clone());
+        }
+    }
+    None
+}
+
+/// Unix/macOS-specific qmd path resolution.
+/// Uses HOME env var and searches standard Unix install locations.
+#[cfg(not(target_os = "windows"))]
+fn resolve_qmd_path_unix() -> Option<PathBuf> {
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = [
         format!("{}/.bun/bin/qmd", home),
@@ -797,11 +874,17 @@ pub fn run() {
                     .expect("Failed to apply vibrancy");
             }
 
-            // Apply Windows acrylic blur
+            // Apply Windows vibrancy effect.
+            // Prefer Mica (Windows 11) for native look and better performance;
+            // fall back to Acrylic (Windows 10 v1809+) if Mica is unavailable.
             #[cfg(target_os = "windows")]
             {
-                use window_vibrancy::apply_acrylic;
-                let _ = apply_acrylic(&window, Some((18, 18, 18, 200)));
+                use window_vibrancy::{apply_acrylic, apply_mica};
+                // Try Mica first (Windows 11 only) — dark mode to match our dark UI
+                if apply_mica(&window, Some(true)).is_err() {
+                    // Fall back to acrylic for Windows 10 or if Mica fails
+                    let _ = apply_acrylic(&window, Some((18, 18, 18, 200)));
+                }
             }
 
             Ok(())

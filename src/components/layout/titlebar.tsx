@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { isMacOS } from "@/lib/platform";
 
 interface TitlebarProps {
   className?: string;
@@ -6,18 +7,22 @@ interface TitlebarProps {
 
 /**
  * Custom titlebar region that integrates with Tauri's overlay titlebar.
- * The data-tauri-drag-region attribute makes this area draggable on macOS.
- * Traffic lights (close/minimize/maximize) are positioned by the OS in the
- * transparent overlay titlebar area.
+ * The data-tauri-drag-region attribute makes this area draggable.
+ *
+ * Platform differences:
+ * - macOS: Traffic lights (close/minimize/maximize) at top-left, so we add
+ *   left padding (~70px) to avoid overlapping them.
+ * - Windows: Native caption buttons at top-right; no left padding needed
+ *   but we add right padding to avoid overlapping the close/min/max buttons.
  */
 export function Titlebar({ className }: TitlebarProps) {
+  const mac = isMacOS();
   return (
     <div
       data-tauri-drag-region
       className={cn(
         "h-12 w-full shrink-0 select-none",
-        // Padding-left accounts for macOS traffic lights (~70px)
-        "pl-[70px]",
+        mac ? "pl-[70px]" : "pl-4 pr-[140px]",
         className,
       )}
     />
